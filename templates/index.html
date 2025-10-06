@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Nelson Speed Finder</title>
+
+  <!-- Leaflet map CSS/JS -->
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+    crossorigin=""
+  />
+  <script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+    crossorigin=""
+  ></script>
+
+  <style>
+    body { font-family: system-ui, Arial, sans-serif; max-width: 800px; margin: 2rem auto; padding: 0 1rem; }
+    #map { height: 360px; margin-top: 1rem; border: 1px solid #ddd; border-radius: 8px; }
+    form { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+    input[type="text"] { flex: 1; padding: 0.5rem; }
+    button { padding: 0.5rem 1rem; cursor: pointer; }
+    pre { background: #f7f7f7; padding: 0.75rem; border-radius: 6px; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <h1>Nelson Speed Finder</h1>
+
+  <form id="lookupForm">
+    <label for="street" style="display:none;">Street</label>
+    <input id="street" name="street" type="text" placeholder="e.g. Manchester Road" required />
+    <button type="submit">Search</button>
+  </form>
+
+  <hr>
+  <h2>Result</h2>
+  <pre id="output">Nothing yet.</pre>
+
+  <div id="map"></div>
+
+  <script>
+    const form = document.getElementById('lookupForm');
+    const output = document.getElementById('output');
+    let map, marker;
+
+    // Camera icon
+    const cameraIcon = L.icon({
+      iconUrl: '/static/camera.png',  // make sure this file exists
+      iconSize: [28, 28],
+      iconAnchor: [14, 28],
+      popupAnchor: [0, -24],
+    });
+
+    // Initialize the map (default view over Nelson)
+    function initMap() {
+      map = L.map('map').setView([53.835, -2.212], 14);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; OpenStreetMap contributors'
+      }).addTo(map);
+    }
+    initMap();
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const street = document.getElementById('street').value.trim();
+      if (!street) { output.textContent = 'Please enter a street name.'; return; }
+
+      output.textContent = 'Searching...';
+      try {
+        const res = await fetch(`/lookup?street=${encodeURIComponent(street)}`);
+        const data = await res.json();
+
+        if (!res.ok) {
+          output.textContent = data.error || data.message || 'Something went wrong.';
+          return;
+        }
+
+        const speed = data.speed_limit ? data.speed_limit : 'Not available';
+        output.textContent =
+          `Street: ${data.street}\n` +
+          `Display name: ${data.display_name}\n` +
+          `Latitude: ${data.latitude}\n` +
+          `Longitude: ${data.longitude}\n` +
+          `Speed limit: ${speed}`;
+
+        const lat = parseFloat(data.latitude);
+        const lon = parseFloat(data.longitude);
+
+        // Add or move the main marker
+        if (!marker) {
+          marker = L.marker([lat, lon]).addTo(map);
+        } else {
+          marker.setLatLng([lat, lon]);
+        }
+        marker.bindPopup(`${data.display_name}<br>Speed limit: ${speed}`).openPopup();
+
+        // Center map
+        map.setView([lat, lon], 17);
+
+        // --- Load nearby cameras and show markers ---
+        if (window.cameraMarkers) {
+          window.cameraMarkers.forEach(m => map.removeLayer(m)); // clear old ones
+        }
+        window.cameraMarkers = [];
+
+        try {
+          const camRes = await fetch(`/cameras?lat=${lat}&lon=${lon}`);
+          const cams = await camRes.json();
+          let cameraCount = 0;
+
+          if (Array.isArray(cams) && cams.length > 0) {
+            cams.forEach(cam => {
+              const camMarker = L.marker([cam.lat, cam.lon], {
+                title: `Camera (${cam.type})`,
+                icon: cameraIcon
+              }).addTo(map);
+
+              camMarker.bindPopup(
+                `<b>Speed Camera (${cam.type})</b><br>${cam.notes}<br>${cam.distance_m} m away`
+              );
+              window.cameraMarkers.push(camMarker);
+            });
+            cameraCount = cams.length;
+          } else {
+            console.log("No cameras nearby.");
+          }
+
+          // Append camera count
+          output.textContent += `\nCameras within 400 m: ${cameraCount}`;
+
+        } catch (err) {
+          console.error("Camera fetch error:", err);
+          output.textContent += `\nCameras within 400 m: error loading`;
+        }
+
+      } catch (err) {
+        output.textContent = 'Network error. Is the Flask server running?';
+      }
+    });
+  </script>
+</body>
+</html>

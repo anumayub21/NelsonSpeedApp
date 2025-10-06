@@ -1,0 +1,23 @@
+[
+  {
+    "id": "cam1",
+    "type": "fixed",
+    "notes": "SAMPLE — not real data",
+    "lat": 53.8369,
+    "lon": -2.2138
+  },
+  {
+    "id": "cam2",
+    "type": "mobile",
+    "notes": "SAMPLE — not real data",
+    "lat": 53.8348,
+    "lon": -2.2175
+  },
+  {
+    "id": "cam3",
+    "type": "anpr",
+    "notes": "SAMPLE — not real data",
+    "lat": 53.8381,
+    "lon": -2.2109
+  }
+]
